@@ -7,14 +7,21 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as data
 
+import sklearn
+from sklearn.model_selection import train_test_split # for preparing the training and testing data sets. You should get yourself familiar with it.
+from sklearn.preprocessing import MinMaxScaler       # Data preprocessing
+from sklearn.metrics import accuracy_score           # performance metrics
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_percentage_error
+
 df = pd.read_csv('train.csv')
 timeseries = df[["store", "product","number_sold"]].values.astype('float32')
 
 # Reduce the size of the dataset
-sample_size = 100
-if len(timeseries) > sample_size:
-    indices = np.random.choice(len(timeseries), size=sample_size, replace=False)
-    timeseries = timeseries[indices]
+# sample_size = 100
+# if len(timeseries) > sample_size:
+#     indices = np.random.choice(len(timeseries), size=sample_size, replace=False)
+#     timeseries = timeseries[indices]
  
 #plt.plot(timeseries)
 # plt.show()
@@ -57,8 +64,8 @@ X_test, y_test = create_dataset(test, lookback=lookback)
 class RecurrentNN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=4, hidden_size=50, num_layers=1, batch_first=True)
-        self.linear = nn.Linear(50, 4)
+        self.lstm = nn.LSTM(input_size=4, hidden_size=1000, num_layers=1, batch_first=True)
+        self.linear = nn.Linear(1000, 4)
     def forward(self, x):
         x, _ = self.lstm(x)
         x = self.linear(x)
@@ -68,7 +75,7 @@ class RecurrentNN(nn.Module):
 
 model = RecurrentNN()
 df = pd.read_csv("test_example.csv")
-window_size = 5  # please fill in your own choice: this is the length of history you have to decide
+window_size = 10  # please fill in your own choice: this is the length of history you have to decide
 
 # split the data set by the combination of `store` and `product``
 gb = df.groupby(["store", "product"])
@@ -84,9 +91,9 @@ for key, data in groups.items():
     mape_score = []
     start = window_size
     # prediction by window rolling
-    while start + 5 <= N:
+    while start + 10 <= N:
         inputs = X[(start - window_size) : start, :]
-        targets = X[start : (start + 5), :]
+        targets = X[start : (start + 10), :]
 
         # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
         # you might have a different name of the prediction function. Please modify accordingly
