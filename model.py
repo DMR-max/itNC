@@ -57,24 +57,28 @@ time_step = 20
 xtrain, ytrain = [], []
 xtrain = np.array(xtrain)
 ytrain = np.array(ytrain)
+
 for i in range(len(train)-time_step):
     feature = train[i:i+time_step]
     target = train[i+1:i+time_step+1]
     xtrain = np.append(xtrain, feature)
     ytrain = np.append(ytrain, target)
-    trainX = torch.tensor(xtrain)
-    trainY = torch.tensor(ytrain)
+
+trainX = torch.tensor(xtrain)
+trainY = torch.tensor(ytrain)
 
 xtest, ytest = [], []
 xtest = np.array(xtest)
 ytest = np.array(ytest)
+
 for i in range(len(test)-time_step):
     feature = test[i:i+time_step]
     target = test[i+1:i+time_step+1]
     xtest = np.append(xtest, feature)
     ytest = np.append(ytest, target)
-    testX = torch.tensor(xtest)
-    testY = torch.tensor(ytest)
+
+testX = torch.tensor(xtest)
+testY = torch.tensor(ytest)
 
 print(trainX.shape, trainY.shape)
 print(testX.shape, testY.shape)
@@ -91,23 +95,23 @@ class RecurrentNN(nn.Module):
                         # You can decide on your own the dimension/size of the hidden state and the number of layers for LSTM
                         # please check the official documentation: https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html 
         
-        self.output_unit = torch.nn.Linear(50, 1)
+        self.predict = nn.Linear(50, 1)
         # self.rnn_unit(input, (h0, c0)) # which unit we should use here? Remember we are supposed to forcast the next (t+1) data point from the hidden state/cell state of LSTM
         
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x):
         output,_ = self.rnn_unit(x)
-        output = self.output_unit(output)
+        output = self.predict(output)
         return output
     
 # train and validate the RNN model
 model = RecurrentNN()
 
-optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-loss_fn = torch.nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.005)
+loss_fn = nn.MSELoss()
 
 df = pd.read_csv("test_example.csv")
-model = None  # load your model here
+# model = None  # load your model here
 window_size = 10  # please fill in your own choice: this is the length of history you have to decide
 
 # split the data set by the combination of `store` and `product``
@@ -130,6 +134,7 @@ for key, data in groups.items():
 
         # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
         # you might have a different name of the prediction function. Please modify accordingly
+        inputs = torch.tensor(inputs)
         predictions = model.predict(inputs)
         start += 5
         # calculate the performance metric
