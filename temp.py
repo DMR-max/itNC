@@ -8,7 +8,7 @@ import torch.optim as optim
 import torch.utils.data as data
 
 df = pd.read_csv('train.csv')
-timeseries = df[["number_sold"]].values.astype('float32')
+timeseries = df[["store", "product","number_sold"]].values.astype('float32')
 
 # Reduce the size of the dataset
 sample_size = 100
@@ -16,7 +16,7 @@ if len(timeseries) > sample_size:
     indices = np.random.choice(len(timeseries), size=sample_size, replace=False)
     timeseries = timeseries[indices]
  
-plt.plot(timeseries)
+#plt.plot(timeseries)
 # plt.show()
 
 # train-test split for time series
@@ -57,8 +57,8 @@ X_test, y_test = create_dataset(test, lookback=lookback)
 class RecurrentNN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=1, hidden_size=50, num_layers=1, batch_first=True)
-        self.linear = nn.Linear(50, 1)
+        self.lstm = nn.LSTM(input_size=4, hidden_size=50, num_layers=1, batch_first=True)
+        self.linear = nn.Linear(50, 4)
     def forward(self, x):
         x, _ = self.lstm(x)
         x = self.linear(x)
@@ -67,26 +67,38 @@ class RecurrentNN(nn.Module):
 
 
 model = RecurrentNN()
-optimizer = optim.Adam(model.parameters())
-loss_fn = nn.MSELoss()
-loader = data.DataLoader(data.TensorDataset(X_train, y_train), shuffle=True, batch_size=8)
- 
-n_epochs = 2000
-for epoch in range(n_epochs):
-    model.train()
-    for X_batch, y_batch in loader:
-        y_pred = model(X_batch)
-        loss = loss_fn(y_pred, y_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-    # Validation
-    if epoch % 100 != 0:
-        continue
-    model.eval()
-    with torch.no_grad():
-        y_pred = model(X_train)
-        train_rmse = np.sqrt(loss_fn(y_pred, y_train))
-        y_pred = model(X_test)
-        test_rmse = np.sqrt(loss_fn(y_pred, y_test))
-    print("Epoch %d: train RMSE %.4f, test RMSE %.4f" % (epoch, train_rmse, test_rmse))
+df = pd.read_csv("test_example.csv")
+window_size = 5  # please fill in your own choice: this is the length of history you have to decide
+
+# split the data set by the combination of `store` and `product``
+gb = df.groupby(["store", "product"])
+groups = {x: gb.get_group(x) for x in gb.groups}
+scores = {}
+
+for key, data in groups.items():
+    # By default, we only take the column `number_sold`.
+    # Please modify this line if your model takes other columns as input
+    X = data.drop(["Date"], axis=1).values  # convert to numpy array
+    N = X.shape[0]  # total number of testing time steps
+
+    mape_score = []
+    start = window_size
+    # prediction by window rolling
+    while start + 5 <= N:
+        inputs = X[(start - window_size) : start, :]
+        targets = X[start : (start + 5), :]
+
+        # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
+        # you might have a different name of the prediction function. Please modify accordingly
+        inputs = torch.tensor(inputs, dtype = torch.float32)
+        predictions = model.forward(inputs)
+        start += 5
+        predictions = predictions.detach().numpy()
+
+        # calculate the performance metric
+        mape_score.append(mean_absolute_percentage_error(targets, predictions))
+    scores[key] = mape_score
+    print(scores)
+
+# save the performance metrics to file
+np.savez("score.npz", scores=scores)
