@@ -9,6 +9,7 @@ from sklearn.metrics import mean_absolute_percentage_error
 import torch                                         # ofc, the PyTorch library
 import torch.optim as optim
 import torch.utils.data as data_util
+import torch.nn as nn
 
 import numpy as np
 import pandas as pd
@@ -28,7 +29,7 @@ plt.plot(data_num_sold, data_product,color= 'blue')
 plt.xlabel("products")
 plt.ylabel("Number sold")
 plt.title("International airline passengers")
-plt.show()
+# plt.show()
 
 # Normalize the dataset
 data = data_num_sold.reshape(-1,1) # column is 1 but row is unknown so numpy figures dimensions out
@@ -39,9 +40,14 @@ scaler = MinMaxScaler(feature_range=(0, 1))
 data = scaler.fit_transform(data)
 
 # Split the time series dataset into train and test sets
-train_size = int(len(data) * 0.70)
-test_size = len(data) - train_size
-train, test = data[:train_size], data[train_size:]
+# train_size = int(len(data) * 0.70)
+# test_size = len(data) - train_size
+# train, test = data[:train_size], data[train_size:]
+
+train_size = int(len(data) * 0.06)
+test_size = int(len(data) * 0.02)
+train, test = data[:train_size], data[train_size:(train_size + test_size)]
+
 print("train size: {}, test size: {} ".format(len(train), len(test)))
 
 # Data transformation to tensors
@@ -73,10 +79,10 @@ for i in range(len(test)-time_step):
 print(trainX.shape, trainY.shape)
 print(testX.shape, testY.shape)
 
-class RecurrentNN(torch.nn.Module):
+class RecurrentNN(nn.Module):
     def __init__(self):
-        super().__init__()
-        self.rnn_unit = torch.nn.Module.LSTM(input_size=1, hidden_size=50, num_layers=1, batch_first=True)
+        super(RecurrentNN, self).__init__()
+        self.rnn_unit = nn.LSTM(input_size=1, hidden_size=50, num_layers=1, batch_first=True)
         # input = torch.randn(5, 3, 10)
         # h0 = torch.randn(2, 3, 20)
         # c0 = torch.randn(2, 3, 20)
