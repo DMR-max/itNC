@@ -49,20 +49,24 @@ print("train size: {}, test size: {} ".format(len(train), len(test)))
 time_step = 20
 
 xtrain, ytrain = [], []
+xtrain = np.array(xtrain)
+ytrain = np.array(ytrain)
 for i in range(len(train)-time_step):
     feature = train[i:i+time_step]
     target = train[i+1:i+time_step+1]
-    xtrain.append(feature)
-    ytrain.append(target)
+    xtrain = np.append(xtrain, feature)
+    ytrain = np.append(ytrain, target)
     trainX = torch.tensor(xtrain)
     trainY = torch.tensor(ytrain)
 
 xtest, ytest = [], []
+xtest = np.array(xtest)
+ytest = np.array(ytest)
 for i in range(len(test)-time_step):
     feature = test[i:i+time_step]
     target = test[i+1:i+time_step+1]
-    xtest.append(feature)
-    ytest.append(target)
+    xtest = np.append(xtest, feature)
+    ytest = np.append(ytest, target)
     testX = torch.tensor(xtest)
     testY = torch.tensor(ytest)
 
