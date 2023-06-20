@@ -62,8 +62,8 @@ for i in range(len(train)-time_step):
     target = train[i+1:i+time_step+1]
     xtrain = np.append(xtrain, feature)
     ytrain = np.append(ytrain, target)
-    trainX = torch.tensor(xtrain)
-    trainY = torch.tensor(ytrain)
+    trainX = torch.tensor(xtrain, dtype = torch.float32)
+    trainY = torch.tensor(ytrain, dtype = torch.float32)
 
 xtest, ytest = [], []
 xtest = np.array(xtest)
@@ -73,8 +73,8 @@ for i in range(len(test)-time_step):
     target = test[i+1:i+time_step+1]
     xtest = np.append(xtest, feature)
     ytest = np.append(ytest, target)
-    testX = torch.tensor(xtest)
-    testY = torch.tensor(ytest)
+    testX = torch.tensor(xtest, dtype = torch.float32)
+    testY = torch.tensor(ytest, dtype = torch.float32)
 
 print(trainX.shape, trainY.shape)
 print(testX.shape, testY.shape)
@@ -90,17 +90,14 @@ class RecurrentNN(nn.Module):
         # please create an LSTM unit with the build-in module `torch.nn.LSTM`.
                         # You can decide on your own the dimension/size of the hidden state and the number of layers for LSTM
                         # please check the official documentation: https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html 
-        self.predict = torch.nn.Linear(50, 1)
-        self.double()
+        self.predict = torch.nn.Linear(2, 10)
         # self.rnn_unit(input, (h0, c0)) # which unit we should use here? Remember we are supposed to forcast the next (t+1) data point from the hidden state/cell state of LSTM
         
 
     def forward(self, x: torch.Tensor):
         output,_ = self.rnn_unit(x)
         output = self.output_unit(output)
-        output.double()
-        print("BBBBBBBBBBBBBBB")
-        print(output.dtype)
+        output = torch.tensor(output, dtype = torch.float32)
         return output
     
 # train and validate the RNN model
