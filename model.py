@@ -90,14 +90,17 @@ class RecurrentNN(nn.Module):
         # please create an LSTM unit with the build-in module `torch.nn.LSTM`.
                         # You can decide on your own the dimension/size of the hidden state and the number of layers for LSTM
                         # please check the official documentation: https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html 
-        
-        self.output_unit = torch.nn.Linear(50, 1)
+        self.predict = torch.nn.Linear(50, 1)
+        self.double()
         # self.rnn_unit(input, (h0, c0)) # which unit we should use here? Remember we are supposed to forcast the next (t+1) data point from the hidden state/cell state of LSTM
         
 
     def forward(self, x: torch.Tensor):
         output,_ = self.rnn_unit(x)
         output = self.output_unit(output)
+        output.double()
+        print("BBBBBBBBBBBBBBB")
+        print(output.dtype)
         return output
     
 # train and validate the RNN model
@@ -107,7 +110,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
 loss_fn = torch.nn.MSELoss()
 
 df = pd.read_csv("test_example.csv")
-model = None  # load your model here
+# model = None  # load your model here
 window_size = 10  # please fill in your own choice: this is the length of history you have to decide
 
 # split the data set by the combination of `store` and `product``
@@ -130,6 +133,9 @@ for key, data in groups.items():
 
         # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
         # you might have a different name of the prediction function. Please modify accordingly
+        inputs = torch.tensor(inputs, dtype = torch.float32)
+        print("AAAAAA")
+        print(inputs.dtype)
         predictions = model.predict(inputs)
         start += 5
         # calculate the performance metric
