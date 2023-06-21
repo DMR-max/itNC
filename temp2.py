@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
@@ -31,12 +32,12 @@ timeseries = df[['index_column',"number_sold"]].values.astype('float32')
 # plt.show()
 
 # Normalize the dataset
-# timeseries = timeseries.reshape(-1,1) # column is 1 but row is unknown so numpy figures dimensions out
-# timeseries = timeseries.astype("float32")
-# timeseries.shape
+timeseries = timeseries.reshape(-1,1) # column is 1 but row is unknown so numpy figures dimensions out
+timeseries = timeseries.astype("float32")
+timeseries.shape
 
-# scaler = MinMaxScaler(feature_range=(0, 1))
-# timeseries = scaler.fit_transform(timeseries)
+scaler = MinMaxScaler(feature_range=(0, 1))
+timeseries = scaler.fit_transform(timeseries)
 
 # train-test split for time series
 train_size = int(len(timeseries) * 0.67)
@@ -68,6 +69,8 @@ def create_dataset(dataset, lookback):
 lookback = 10
 X_train, y_train = create_dataset(train, lookback=lookback)
 X_test, y_test = create_dataset(test, lookback=lookback)
+# y_train =torch.tensor(y_train, dtype=torch.float32).reshape(-1, 1)
+# y_test = torch.tensor(y_test, dtype=torch.float32).reshape(-1, 1)
 # print(X_train.shape, y_train.shape)
 # print(X_test.shape, y_test.shape)
 
@@ -76,8 +79,10 @@ X_test, y_test = create_dataset(test, lookback=lookback)
 class RecurrentNN(nn.Module):
     def __init__(self):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=2, hidden_size=4, num_layers=1, batch_first=True)
-        self.linear = nn.Linear(4,2)
+        self.lstm = nn.LSTM(input_size=1, hidden_size=4, num_layers=1, batch_first=True)
+        # # Fully connected layer
+        # self.fc = nn.Linear(hidden_dim, output_size)
+        self.linear = nn.Linear(4,1)
     def forward(self, x):
         x, _ = self.lstm(x)
         x = self.linear(x)
@@ -87,13 +92,20 @@ class RecurrentNN(nn.Module):
 model = RecurrentNN()
 
 optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-loss_fn = torch.nn.MSELoss()
+# loss function and optimizer
+def loss_fn(output, target):
+    # MAPE loss
+    return torch.mean(torch.abs((target - output) / target)) *100 
 
 # new concept: the Data Loader, which is handy for converting the data (in numpy or pandas dataframes) to Tensors
 # please check out this very detailed tutorial: https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
 loader = data_util.DataLoader(data_util.TensorDataset(X_train, y_train), shuffle=True, batch_size=8)
 
-n_epochs = 2000
+# Hold the best model
+best_mape = np.inf   # init to infinity
+best_weights = None
+
+n_epochs = 9
 for epoch in range(n_epochs):
     model.train()
     for X_batch, y_batch in loader:
@@ -105,18 +117,19 @@ for epoch in range(n_epochs):
         optimizer.step()      # gradient descent
 
     # validate the model on the test set - only performed after some epochs
-    if epoch % 100 != 0:
-        continue
+    # if epoch % 10 != 0:
+    #     continue
     # this line is essential for validation: it turns off some functionalities that should not active in testing, e.g., dropout
     model.eval()
     # this line is essentail for validation: it temporarily disables the computation of the gradient in the backpropagation.
     with torch.no_grad():
-        y_pred = model(X_train)
-        train_rmse = np.sqrt(loss_fn(y_pred, y_train))
         y_pred = model(X_test)
-        test_rmse = np.sqrt(loss_fn(y_pred, y_test))
+        mape = float(loss_fn(y_pred, y_test))
+        if mape < best_mape:
+            best_mape = mape
+            best_weights = copy.deepcopy(model.state_dict())
 
-    print("Epoch %d: train RMSE %.4f, test RMSE %.4f" % (epoch, train_rmse, test_rmse))
+    print("Epoch %d: current Mape %.4f, best mape %.4f" % (epoch, mape, best_mape))
 
 
 
@@ -131,7 +144,12 @@ scores = {}
 for key, data in groups.items():
     # By default, we only take the column `number_sold`.
     # Please modify this line if your model takes other columns as input
-    X = data.drop(["Date","store", "product"], axis=1).values  # convert to numpy array
+    data.insert(0,'index_column','')
+    data['index_column'] = data.index
+    X = data[['index_column',"number_sold"]].values.astype('float32')  # convert to numpy array
+    X = X.reshape(-1,1) # column is 1 but row is unknown so numpy figures dimensions out
+    X = X.astype("float32")
+    X.shape
     N = X.shape[0]  # total number of testing time steps
 
     mape_score = []
@@ -140,7 +158,6 @@ for key, data in groups.items():
     while start + 50 <= N:
         inputs = X[(start - window_size) : start, :]
         targets = X[start : (start + 50), :]
-        print(inputs)
 
         # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
         # you might have a different name of the prediction function. Please modify accordingly
@@ -151,6 +168,7 @@ for key, data in groups.items():
 
         # calculate the performance metric
         mape_score.append(mean_absolute_percentage_error(targets, predictions))
+        print(mean_absolute_percentage_error(targets, predictions))
     scores[key] = mape_score
     print(scores)
 
