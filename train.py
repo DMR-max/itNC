@@ -1,124 +1,118 @@
-# we first import some dependencies
-import sklearn
-from sklearn.model_selection import train_test_split # for preparing the training and testing data sets. You should get yourself familiar with it.
-from sklearn.preprocessing import MinMaxScaler       # Data preprocessing
-from sklearn.metrics import accuracy_score           # performance metrics
-import matplotlib.pyplot as plt
-
-import torch                                         # ofc, the PyTorch library
-import torch.optim as optim
-import torch.utils.data as data_util
+import test
+import model
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.utils.data as data_util
+import copy
+from sklearn.preprocessing import MinMaxScaler
 
-# set a random seed for reproducibility
+
+
+# Calculate Mean Absolute Percentage Error (MAPE)
+def loss_fn(output, target, epsilon=1e-7):
+
+    return torch.mean(torch.abs((target - output) / target + epsilon))
+
+
+
+# Transform a time series into a prediction dataset
+def create_dataset(dataset, lookback):
+
+    X, y = [], []
+    for i in range(len(dataset) - lookback - 2):
+
+        if (i % 4 == 0):
+            feature1 = dataset[i : i + lookback]
+        elif (i % 4 == 1):
+            feature2 = dataset[i + 1 : i + lookback + 1]
+        elif (i % 4 == 2):
+            feature3 = dataset[i + 2 : i + lookback + 2]
+            feature = np.column_stack((feature1, feature2, feature3))
+            X.append(feature)
+        elif (i % 4 == 3):
+            target = dataset[i + 3 : i + lookback + 3]
+            y.append(target)
+
+    X = np.array(X)
+    y = np.array(y)
+
+    return torch.tensor(X), torch.tensor(y)
+
+
+
+# Set a random seed for reproducibility
 random_seed = 42
 np.random.seed(random_seed)
 torch.manual_seed(random_seed)
 torch.cuda.manual_seed(random_seed)
 
-df = pd.read_csv("train.csv")
-df.head()
-
-data_num_sold = df['number_sold'].values
-data_product = df['product'].values
-plt.plot(data_num_sold, data_product,color= 'blue')
-plt.xlabel("products")
-plt.ylabel("Number sold")
-plt.title("International airline passengers")
-plt.show()
+# Read the dataset from CSV file
+df = pd.read_csv('train.csv')
+df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y%m%d")
+timeseries = df[["Date", "store", "product", "number_sold"]].values.astype('float32')
 
 # Normalize the dataset
-data = data_num_sold.reshape(-1,1) # column is 1 but row is unknown so numpy figures dimensions out
-data = data.astype("float32")
-data.shape
+timeseries = timeseries.reshape(-1, 1)
+timeseries = timeseries.astype("float32")
 
-scaler = MinMaxScaler(feature_range=(0, 1))
-data = scaler.fit_transform(data)
+# Train-test split for time series
+train_size = int(len(timeseries) * 0.70)
+test_size = len(timeseries) - train_size
+train_arr, test_arr = timeseries[:train_size], timeseries[train_size:]
 
-# Split the time series dataset into train and test sets
-train_size = int(len(data) * 0.70)
-test_size = len(data) - train_size
-train, test = data[:train_size], data[train_size:]
-print("train size: {}, test size: {} ".format(len(train), len(test)))
+# Scale the data using MinMaxScaler
+scaler = MinMaxScaler(feature_range=(1, 2))
+scaler.fit(train_arr)
+train_arr = scaler.transform(train_arr)
+test_arr = scaler.transform(test_arr)
 
-# Data transformation to tensors
+lookback = 10
+X_train, y_train = create_dataset(train_arr, lookback=lookback)
+X_test, y_test = create_dataset(test_arr, lookback=lookback)
 
-time_step = 20
+# Create the RNN model
+model = model.RecurrentNN()
 
-xtrain, ytrain = [], []
-for i in range(len(train)-time_step):
-    feature = train[i:i+time_step]
-    target = train[i+1:i+time_step+1]
-    xtrain.append(feature)
-    ytrain.append(target)
-    trainX = torch.tensor(xtrain)
-    trainY = torch.tensor(ytrain)
+# Define the optimizer
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-xtest, ytest = [], []
-for i in range(len(test)-time_step):
-    feature = test[i:i+time_step]
-    target = test[i+1:i+time_step+1]
-    xtest.append(feature)
-    ytest.append(target)
-    testX = torch.tensor(xtest)
-    testY = torch.tensor(ytest)
+# Create the data loader
+loader = data_util.DataLoader(data_util.TensorDataset(X_train, y_train), shuffle=True, batch_size=8)
 
-print(trainX.shape, trainY.shape)
-print(testX.shape, testY.shape)
+best_mape = np.inf
+best_weights = None
 
-class RecurrentNN(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.rnn_unit = torch.nn.Module.LSTM(10, 20, 2) 
-        input = torch.randn(5, 3, 10)
-        h0 = torch.randn(2, 3, 20)
-        c0 = torch.randn(2, 3, 20)
-        
-        # please create an LSTM unit with the build-in module `torch.nn.LSTM`.
-                        # You can decide on your own the dimension/size of the hidden state and the number of layers for LSTM
-                        # please check the official documentation: https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html 
-        
-        self.output_unit = self.rnn_unit(input, (h0, c0)) # which unit we should use here? Remember we are supposed to forcast the next (t+1) data point from the hidden state/cell state of LSTM
-        
-
-    def forward(self, x: torch.Tensor):
-        output,_ = self.rnn_unit(x)
-        output = self.output_unit(output)
-        return output
-    
-# train and validate the RNN model
-model = RecurrentNN()
-
-optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-loss_fn = torch.nn.MSELoss()
-
-# new concept: the Data Loader, which is handy for converting the data (in numpy or pandas dataframes) to Tensors
-# please check out this very detailed tutorial: https://pytorch.org/tutorials/beginner/basics/data_tutorial.html
-loader = data_util.DataLoader(data_util.TensorDataset(trainX, trainY), shuffle=True, batch_size=8)
- 
-n_epochs = 2000
+n_epochs = 10
 for epoch in range(n_epochs):
-    model.train()
+    model.train()  # Set the model in training mode
+
     for X_batch, y_batch in loader:
-        y_pred = model(X_batch)
-        loss = loss_fn(y_pred, y_batch)
-        optimizer.zero_grad() # cleanzing the gradient information from the previous step/iteration
-        loss.backward()       # compute the gradients by backpropagation
-        optimizer.step()      # gradient descent
+        y_pred = model(X_batch)  # Forward pass
+        loss = loss_fn(y_pred, y_batch)  # Compute the loss
+        optimizer.zero_grad()  # Clear gradients
+        loss.backward()  # Backpropagation
+        optimizer.step()  # Update model parameters
 
-    # validate the model on the test set - only performed after some epochs
-    if epoch % 100 != 0:
-        continue
-    # this line is essential for validation: it turns off some functionalities that should not active in testing, e.g., dropout
-    model.eval()
-    # this line is essentail for validation: it temporarily disables the computation of the gradient in the backpropagation.
+    model.eval()  # Set the model in evaluation mode
+
     with torch.no_grad():
-        y_pred = model(trainX)
-        train_rmse = np.sqrt(loss_fn(y_pred, trainY))
-        y_pred = model(testX)
-        test_rmse = np.sqrt(loss_fn(y_pred, testY))
+        y_pred = model(X_test)  # Forward pass on the test set
+        current_mape = float(loss_fn(y_pred, y_test))  # Compute the loss on the test set
 
-    print("Epoch %d: train RMSE %.4f, test RMSE %.4f" % (epoch, train_rmse, test_rmse))
+        if current_mape < best_mape:
+            best_mape = current_mape  # Update the best MAPE if the current MAPE is better
+            best_weights = copy.deepcopy(model.state_dict())  # Store the best model weights
 
+    print("Epoch %d: current MAPE %.6f, best MAPE %.6f" % (epoch + 1, current_mape, best_mape))
+
+# Restore the best model and save its state
+model.load_state_dict(best_weights)
+torch.save(model.state_dict(), "model_state_dict.pth")
+
+# Print the best MAPE achieved
+print("Best MAPE: %.6f" % best_mape)
+
+# Call the test function
+test.test_func(scaler, lookback, model)

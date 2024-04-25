@@ -1,36 +1,79 @@
-import numpy as np
+import torch
 import pandas as pd
+import numpy as np
 from sklearn.metrics import mean_absolute_percentage_error
 
-df = pd.read_csv("test_example.csv")
-model = None  # load your model here
-window_size = 10  # please fill in your own choice: this is the length of history you have to decide
 
-# split the data set by the combination of `store` and `product``
-gb = df.groupby(["store", "product"])
-groups = {x: gb.get_group(x) for x in gb.groups}
-scores = {}
 
-for key, data in groups.items():
-    # By default, we only take the column `number_sold`.
-    # Please modify this line if your model takes other columns as input
-    X = data.drop(["Date", "store", "product"], axis=1).values  # convert to numpy array
-    N = X.shape[0]  # total number of testing time steps
+# Transform a time series into a prediction dataset
+def create_dataset(dataset, lookback):
 
-    mape_score = []
-    start = window_size
-    # prediction by window rolling
-    while start + 5 <= N:
-        inputs = X[(start - window_size) : start, :]
-        targets = X[start : (start + 5), :]
+    X, y = [], []
+    for i in range(len(dataset) - lookback - 2):
 
-        # you might need to modify `inputs` before feeding it to your model, e.g., convert it to PyTorch Tensors
-        # you might have a different name of the prediction function. Please modify accordingly
-        predictions = model.predict(inputs)
-        start += 5
-        # calculate the performance metric
-        mape_score.append(mean_absolute_percentage_error(targets, predictions))
-    scores[key] = mape_score
+        if (i % 4 == 0):
+            feature1 = dataset[i : i + lookback]
+        elif (i % 4 == 1):
+            feature2 = dataset[i + 1 : i + lookback + 1]
+        elif (i % 4 == 2):
+            feature3 = dataset[i + 2 : i + lookback + 2]
+            feature = np.column_stack((feature1, feature2, feature3))
+            X.append(feature)
+        elif (i % 4 == 3):
+            target = dataset[i + 3 : i + lookback + 3]
+            y.append(target)
 
-# save the performance metrics to file
-np.savez("score.npz", scores=scores)
+    X = np.array(X)
+    y = np.array(y)
+
+    return torch.tensor(X), torch.tensor(y)
+
+
+
+# Perform testing and calculate performance metrics for the given model
+def test_func(scaler, lookback, model):
+
+    # Read the dataset from CSV file
+    df = pd.read_csv("test_example.csv")
+    df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y%m%d")
+    window_size = 5
+
+    # Split the dataset by the combination of 'store' and 'product'
+    gb = df.groupby(["store", "product"])
+    groups = {x: gb.get_group(x) for x in gb.groups}
+    scores = {}
+
+    for key, _ in groups.items():
+
+        X = df[["Date", "store", "product", "number_sold"]].values.astype('float32') # convert to numpy array
+        X = X.reshape(-1, 1) # column is 1 but row is unknown so numpy figures dimensions out
+        X = X.astype("float32")
+        X.shape
+        Z = df[["number_sold"]].values.astype('float32')
+        X = scaler.transform(X)
+        Z = scaler.transform(Z)
+        N = X.shape[0]  # total number of testing time steps
+        X_train, _ = create_dataset(X, lookback=lookback)
+        mape_score = []
+        start = window_size
+
+        # Prediction by window rolling
+        while start + 5 <= N:
+            X_inputs = X_train[(start - window_size):start, :]
+            targets = Z[start:(start + 5), :]
+
+            if len(targets) == 0 or len(X_inputs) == 0:
+                break
+
+            predictions = model.forward(X_inputs)
+            start += 5
+            predictions = torch.mean(predictions, dim=1)
+            predictions = predictions.detach().numpy()
+
+            # Calculate the performance metric
+            mape_score.append(mean_absolute_percentage_error(targets, predictions))
+
+        scores[key] = mape_score
+
+    # Save the performance metrics to file
+    np.savez("score.npz", scores=scores)
